@@ -1,0 +1,118 @@
+let tx = self
+            .rpc_client
+            .get_transaction_with_config(sig, conf)
+            .await?;
+
+        let decoded_tx = tx.transaction.transaction.decode().unwrap();
+
+        let accounts = match decoded_tx.message.clone() {
+            solana_sdk::message::VersionedMessage::Legacy(m) => m.account_keys,
+            solana_sdk::message::VersionedMessage::V0(m) => m.account_keys,
+        };
+
+        let jupiter_address = Pubkey::from_str("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4")?;
+        if accounts.contains(&jupiter_address) {
+            bail!("Not a create lp tx");
+        }
+
+        let mut mint0 = Pubkey::default();
+        let mut mint1 = Pubkey::default();
+        let mut lp_token_mint = Pubkey::default();
+        let mut deployer = Pubkey::default();
+        let mut pool_id = Pubkey::default();
+        let mut base_vault = Pubkey::default();
+        let mut quote_vault = Pubkey::default();
+        let mut params = CreateAmmLpParams::default();
+        let mut amm_keys: AmmKeys = AmmKeys {
+            amm_pool: Pubkey::default(),
+            amm_coin_mint: Pubkey::default(),
+            amm_pc_mint: Pubkey::default(),
+            amm_authority: Pubkey::default(),
+            amm_target: Pubkey::default(),
+            amm_coin_vault: base_vault,
+            amm_pc_vault: quote_vault,
+            amm_lp_mint: lp_token_mint,
+            amm_open_order: Pubkey::default(),
+            market_program: Pubkey::default(),
+            market: Pubkey::default(),
+            nonce: params.nonce,
+        };
+
+        for ix in decoded_tx.message.instructions() {
+            if ix.program_id(&accounts).to_string() == self.openbook_amm_address
+                && ix.data.len() > 0
+            {
+                mint0 = accounts
+                    .get(ix.accounts[8] as usize)
+                    .unwrap_or(&Pubkey::default())
+                    .clone();
+                mint1 = accounts
+                    .get(ix.accounts[9] as usize)
+                    .unwrap_or(&Pubkey::default())
+                    .clone();
+                params = CreateAmmLpParams::from_bytes(&ix.data)?;
+                lp_token_mint = accounts
+                    .get(ix.accounts[7] as usize)
+                    .unwrap_or(&Pubkey::default())
+                    .clone();
+                deployer = accounts
+                    .get(ix.accounts[17] as usize)
+                    .unwrap_or(&Pubkey::default())
+                    .clone();
+                pool_id = accounts
+                    .get(ix.accounts[4] as usize)
+                    .unwrap_or(&Pubkey::default())
+                    .clone();
+
+                base_vault = accounts
+                    .get(ix.accounts[10] as usize)
+                    .unwrap_or(&Pubkey::default())
+                    .clone();
+                quote_vault = accounts
+                    .get(ix.accounts[11] as usize)
+                    .unwrap_or(&Pubkey::default())
+                    .clone();
+                let amm_authority = accounts
+                    .get(ix.accounts[5] as usize)
+                    .unwrap_or(&Pubkey::default())
+                    .clone();
+
+                let amm_target = accounts
+                    .get(ix.accounts[13] as usize)
+                    .unwrap_or(&Pubkey::default())
+                    .clone();
+
+                let amm_open_order = accounts
+                    .get(ix.accounts[6] as usize)
+                    .unwrap_or(&Pubkey::default())
+                    .clone();
+
+                let serum_market = accounts
+                    .get(ix.accounts[16] as usize)
+                    .unwrap_or(&Pubkey::default())
+                    .clone();
+
+                let serum_program = accounts
+                    .get(ix.accounts[15] as usize)
+                    .unwrap_or(&Pubkey::default())
+                    .clone();
+
+
+amm_keys = AmmKeys {
+                    amm_pool: pool_id,
+                    amm_coin_mint: mint0,
+                    amm_pc_mint: mint1,
+                    amm_authority,
+                    amm_target,
+                    amm_coin_vault: base_vault,
+                    amm_pc_vault: quote_vault,
+                    amm_lp_mint: lp_token_mint,
+                    amm_open_order,
+                    market_program: serum_program,
+                    market: serum_market,
+                    nonce: params.nonce,
+                };
+
+                break;
+            }
+        }
